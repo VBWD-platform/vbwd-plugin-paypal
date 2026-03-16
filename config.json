@@ -1,0 +1,37 @@
+{
+  "sandbox": {
+    "type": "boolean",
+    "default": true,
+    "description": "Use PayPal Sandbox environment"
+  },
+  "test_client_id": {
+    "type": "string",
+    "default": "",
+    "description": "PayPal sandbox Client ID"
+  },
+  "test_client_secret": {
+    "type": "string",
+    "default": "",
+    "description": "PayPal sandbox Client Secret"
+  },
+  "test_webhook_id": {
+    "type": "string",
+    "default": "",
+    "description": "PayPal sandbox Webhook ID for signature verification"
+  },
+  "live_client_id": {
+    "type": "string",
+    "default": "",
+    "description": "PayPal live Client ID"
+  },
+  "live_client_secret": {
+    "type": "string",
+    "default": "",
+    "description": "PayPal live Client Secret"
+  },
+  "live_webhook_id": {
+    "type": "string",
+    "default": "",
+    "description": "PayPal live Webhook ID for signature verification"
+  }
+}

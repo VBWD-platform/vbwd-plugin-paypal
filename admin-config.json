@@ -1,0 +1,29 @@
+{
+  "tabs": [
+    {
+      "id": "mode",
+      "label": "Mode",
+      "fields": [
+        { "key": "sandbox", "label": "Sandbox Mode", "component": "checkbox" }
+      ]
+    },
+    {
+      "id": "test-credentials",
+      "label": "Test Credentials",
+      "fields": [
+        { "key": "test_client_id", "label": "Client ID", "component": "input", "inputType": "text" },
+        { "key": "test_client_secret", "label": "Client Secret", "component": "input", "inputType": "password" },
+        { "key": "test_webhook_id", "label": "Webhook ID", "component": "input", "inputType": "text" }
+      ]
+    },
+    {
+      "id": "live-credentials",
+      "label": "Live Credentials",
+      "fields": [
+        { "key": "live_client_id", "label": "Client ID", "component": "input", "inputType": "text" },
+        { "key": "live_client_secret", "label": "Client Secret", "component": "input", "inputType": "password" },
+        { "key": "live_webhook_id", "label": "Webhook ID", "component": "input", "inputType": "text" }
+      ]
+    }
+  ]
+}
