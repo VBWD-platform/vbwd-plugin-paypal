@@ -45,3 +45,13 @@ No plugin-owned tables.
 ```bash
 docker compose run --rm test python -m pytest plugins/paypal/tests/ -v
 ```
+
+---
+
+## Related
+
+| | Repository |
+|-|------------|
+| 👤 Frontend (user) | [vbwd-fe-user-plugin-paypal-payment](https://github.com/VBWD-platform/vbwd-fe-user-plugin-paypal-payment) |
+
+**Core:** [vbwd-backend](https://github.com/VBWD-platform/vbwd-backend)
