@@ -48,9 +48,7 @@ def app(mock_paypal_api, mock_config_store, mock_container, mocker):
 
     from plugins.paypal.routes import paypal_plugin_bp
 
-    flask_app.register_blueprint(
-        paypal_plugin_bp, url_prefix="/api/v1/plugins/paypal"
-    )
+    flask_app.register_blueprint(paypal_plugin_bp, url_prefix="/api/v1/plugins/paypal")
 
     flask_app.config_store = mock_config_store
     flask_app.container = mock_container
@@ -96,7 +94,9 @@ class TestCreateOrder:
         )
         assert resp.status_code == 404
 
-    def test_create_order_missing_invoice_id(self, client, auth_headers, mock_container):
+    def test_create_order_missing_invoice_id(
+        self, client, auth_headers, mock_container
+    ):
         """Should return 400 when invoice_id is missing."""
         mock_container.invoice_repository.return_value.find_by_id.return_value = None
         resp = client.post(
@@ -116,7 +116,9 @@ class TestCreateOrder:
         )
         assert resp.status_code == 404
 
-    def test_create_order_invoice_not_pending(self, client, auth_headers, mock_container):
+    def test_create_order_invoice_not_pending(
+        self, client, auth_headers, mock_container
+    ):
         """Should return 400 when invoice status is not pending."""
         invoice = MagicMock()
         invoice.id = uuid4()
@@ -218,23 +220,29 @@ class TestCaptureOrder:
         capture_resp.json.return_value = {
             "id": "ORDER-CAP",
             "status": "COMPLETED",
-            "purchase_units": [{
-                "payments": {
-                    "captures": [{
-                        "id": "CAP-789",
-                        "amount": {"value": "29.99", "currency_code": "USD"},
-                    }]
+            "purchase_units": [
+                {
+                    "payments": {
+                        "captures": [
+                            {
+                                "id": "CAP-789",
+                                "amount": {"value": "29.99", "currency_code": "USD"},
+                            }
+                        ]
+                    }
                 }
-            }],
+            ],
         }
         status_resp = MagicMock()
         status_resp.status_code = 200
         status_resp.json.return_value = {
             "status": "COMPLETED",
-            "purchase_units": [{
-                "amount": {"value": "29.99", "currency_code": "USD"},
-                "custom_id": str(uuid4()),
-            }],
+            "purchase_units": [
+                {
+                    "amount": {"value": "29.99", "currency_code": "USD"},
+                    "custom_id": str(uuid4()),
+                }
+            ],
         }
         token_resp = MagicMock()
         token_resp.status_code = 200
@@ -307,7 +315,9 @@ class TestWebhook:
         mock_invoice = MagicMock()
         mock_invoice.id = UUID(invoice_id)
         mock_invoice.status.value = "PENDING"
-        mock_container.invoice_repository.return_value.find_by_id.return_value = mock_invoice
+        mock_container.invoice_repository.return_value.find_by_id.return_value = (
+            mock_invoice
+        )
 
         verify_resp = MagicMock()
         verify_resp.status_code = 200
@@ -371,10 +381,12 @@ class TestSessionStatus:
         status_resp.status_code = 200
         status_resp.json.return_value = {
             "status": "COMPLETED",
-            "purchase_units": [{
-                "amount": {"value": "29.99", "currency_code": "USD"},
-                "custom_id": "",
-            }],
+            "purchase_units": [
+                {
+                    "amount": {"value": "29.99", "currency_code": "USD"},
+                    "custom_id": "",
+                }
+            ],
         }
         token_resp = MagicMock()
         token_resp.status_code = 200

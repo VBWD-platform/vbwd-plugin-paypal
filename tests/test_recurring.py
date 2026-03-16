@@ -47,9 +47,8 @@ def app(mock_paypal_api, mock_config_store, mock_container, mocker):
     mocker.patch("src.middleware.auth.db", MagicMock())
 
     from plugins.paypal.routes import paypal_plugin_bp
-    flask_app.register_blueprint(
-        paypal_plugin_bp, url_prefix="/api/v1/plugins/paypal"
-    )
+
+    flask_app.register_blueprint(paypal_plugin_bp, url_prefix="/api/v1/plugins/paypal")
     flask_app.config_store = mock_config_store
     flask_app.container = mock_container
     return flask_app
@@ -193,7 +192,9 @@ class TestSaleCompleted:
         mock_container.subscription_repository.return_value.find_by_provider_subscription_id.return_value = (
             mock_subscription
         )
-        mock_container.invoice_repository.return_value.find_by_provider_session_id.return_value = None
+        mock_container.invoice_repository.return_value.find_by_provider_session_id.return_value = (
+            None
+        )
 
         event_payload = {
             "event_type": "PAYMENT.SALE.COMPLETED",
@@ -274,9 +275,7 @@ class TestSubscriptionCancelled:
 class TestPaymentFailed:
     """Test BILLING.SUBSCRIPTION.PAYMENT.FAILED webhook."""
 
-    def test_webhook_payment_failed(
-        self, client, mock_paypal_api, mock_container
-    ):
+    def test_webhook_payment_failed(self, client, mock_paypal_api, mock_container):
         """Should emit PaymentFailedEvent."""
         mock_subscription = MagicMock()
         mock_subscription.id = uuid4()
@@ -312,23 +311,29 @@ class TestCaptureOrderEmitsEvent:
         capture_resp.json.return_value = {
             "id": "ORDER-CAP-REC",
             "status": "COMPLETED",
-            "purchase_units": [{
-                "payments": {
-                    "captures": [{
-                        "id": "CAP-REC-1",
-                        "amount": {"value": "49.99", "currency_code": "USD"},
-                    }]
+            "purchase_units": [
+                {
+                    "payments": {
+                        "captures": [
+                            {
+                                "id": "CAP-REC-1",
+                                "amount": {"value": "49.99", "currency_code": "USD"},
+                            }
+                        ]
+                    }
                 }
-            }],
+            ],
         }
         status_resp = MagicMock()
         status_resp.status_code = 200
         status_resp.json.return_value = {
             "status": "COMPLETED",
-            "purchase_units": [{
-                "amount": {"value": "49.99", "currency_code": "USD"},
-                "custom_id": invoice_id,
-            }],
+            "purchase_units": [
+                {
+                    "amount": {"value": "49.99", "currency_code": "USD"},
+                    "custom_id": invoice_id,
+                }
+            ],
         }
         token_resp = MagicMock()
         token_resp.status_code = 200

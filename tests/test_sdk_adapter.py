@@ -13,9 +13,7 @@ def adapter(mock_paypal_api):
     """Create PayPalSDKAdapter with mocked requests module."""
     from plugins.paypal.sdk_adapter import PayPalSDKAdapter
 
-    config = SDKConfig(
-        api_key="ATest123", api_secret="secret456", sandbox=True
-    )
+    config = SDKConfig(api_key="ATest123", api_secret="secret456", sandbox=True)
     return PayPalSDKAdapter(config)
 
 
@@ -125,14 +123,18 @@ class TestPayPalSDKAdapter:
         capture_resp.json.return_value = {
             "id": "ORDER-CAP",
             "status": "COMPLETED",
-            "purchase_units": [{
-                "payments": {
-                    "captures": [{
-                        "id": "CAP-123",
-                        "amount": {"value": "29.99", "currency_code": "USD"},
-                    }]
+            "purchase_units": [
+                {
+                    "payments": {
+                        "captures": [
+                            {
+                                "id": "CAP-123",
+                                "amount": {"value": "29.99", "currency_code": "USD"},
+                            }
+                        ]
+                    }
                 }
-            }],
+            ],
         }
         token_resp = MagicMock()
         token_resp.status_code = 200
@@ -190,10 +192,12 @@ class TestPayPalSDKAdapter:
         status_resp.status_code = 200
         status_resp.json.return_value = {
             "status": "COMPLETED",
-            "purchase_units": [{
-                "amount": {"value": "49.99", "currency_code": "EUR"},
-                "custom_id": "inv_abc",
-            }],
+            "purchase_units": [
+                {
+                    "amount": {"value": "49.99", "currency_code": "EUR"},
+                    "custom_id": "inv_abc",
+                }
+            ],
         }
         token_resp = MagicMock()
         token_resp.status_code = 200

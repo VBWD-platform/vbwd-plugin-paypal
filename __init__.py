@@ -3,7 +3,11 @@ from typing import Optional, Dict, Any, TYPE_CHECKING
 from decimal import Decimal
 from uuid import UUID
 from src.plugins.base import BasePlugin, PluginMetadata
-from src.plugins.payment_provider import PaymentProviderPlugin, PaymentResult, PaymentStatus
+from src.plugins.payment_provider import (
+    PaymentProviderPlugin,
+    PaymentResult,
+    PaymentStatus,
+)
 
 if TYPE_CHECKING:
     from flask import Blueprint
@@ -28,6 +32,7 @@ class PayPalPlugin(PaymentProviderPlugin):
 
     def get_blueprint(self) -> Optional["Blueprint"]:
         from plugins.paypal.routes import paypal_plugin_bp
+
         return paypal_plugin_bp
 
     def get_url_prefix(self) -> Optional[str]:
@@ -48,11 +53,14 @@ class PayPalPlugin(PaymentProviderPlugin):
         config_store = current_app.config_store
         config = config_store.get_config("paypal")
         prefix = "test_" if config.get("sandbox", True) else "live_"
-        return PayPalSDKAdapter(SDKConfig(
-            api_key=config.get(f"{prefix}client_id") or config.get("client_id", ""),
-            api_secret=config.get(f"{prefix}client_secret") or config.get("client_secret", ""),
-            sandbox=config.get("sandbox", True),
-        ))
+        return PayPalSDKAdapter(
+            SDKConfig(
+                api_key=config.get(f"{prefix}client_id") or config.get("client_id", ""),
+                api_secret=config.get(f"{prefix}client_secret")
+                or config.get("client_secret", ""),
+                sandbox=config.get("sandbox", True),
+            )
+        )
 
     def create_payment_intent(
         self,
@@ -75,7 +83,9 @@ class PayPalPlugin(PaymentProviderPlugin):
             )
         return PaymentResult(success=False, error_message=resp.error)
 
-    def process_payment(self, payment_intent_id: str, payment_method: str) -> PaymentResult:
+    def process_payment(
+        self, payment_intent_id: str, payment_method: str
+    ) -> PaymentResult:
         adapter = self._get_adapter()
         resp = adapter.capture_order(payment_intent_id)
         if resp.success:
@@ -86,7 +96,9 @@ class PayPalPlugin(PaymentProviderPlugin):
             )
         return PaymentResult(success=False, error_message=resp.error)
 
-    def refund_payment(self, transaction_id: str, amount: Optional[Decimal] = None) -> PaymentResult:
+    def refund_payment(
+        self, transaction_id: str, amount: Optional[Decimal] = None
+    ) -> PaymentResult:
         """Refund a PayPal payment.
 
         transaction_id may be an order_id (from provider_session_id) or a capture_id.
@@ -97,7 +109,9 @@ class PayPalPlugin(PaymentProviderPlugin):
         # Try to extract capture_id from order details (transaction_id may be order_id)
         capture_id = self._resolve_capture_id(adapter, transaction_id)
         if not capture_id:
-            return PaymentResult(success=False, error_message="Cannot find capture ID for refund")
+            return PaymentResult(
+                success=False, error_message="Cannot find capture ID for refund"
+            )
 
         resp = adapter.refund_payment(capture_id, amount)
         if resp.success:
@@ -135,13 +149,12 @@ class PayPalPlugin(PaymentProviderPlugin):
     def verify_webhook(self, payload: bytes, signature: str) -> bool:
         adapter = self._get_adapter()
         from flask import current_app
+
         config = current_app.config_store.get_config("paypal")
         prefix = "test_" if config.get("sandbox", True) else "live_"
         webhook_id = config.get(f"{prefix}webhook_id") or config.get("webhook_id", "")
         try:
-            adapter.verify_webhook_signature(
-                payload, signature, webhook_id
-            )
+            adapter.verify_webhook_signature(payload, signature, webhook_id)
             return True
         except ValueError:
             return False

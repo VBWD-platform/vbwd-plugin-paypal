@@ -31,9 +31,8 @@ def app(mock_paypal_api, mock_config_store, mock_container, mocker):
     mocker.patch("src.middleware.auth.db", MagicMock())
 
     from plugins.paypal.routes import paypal_plugin_bp
-    flask_app.register_blueprint(
-        paypal_plugin_bp, url_prefix="/api/v1/plugins/paypal"
-    )
+
+    flask_app.register_blueprint(paypal_plugin_bp, url_prefix="/api/v1/plugins/paypal")
     flask_app.config_store = mock_config_store
     flask_app.container = mock_container
     return flask_app
@@ -93,9 +92,7 @@ class TestWebhookEventEmission:
         event = emit_call.call_args[0][0]
         assert isinstance(event, PaymentCapturedEvent)
 
-    def test_event_correct_invoice_id(
-        self, client, mock_paypal_api, mock_container
-    ):
+    def test_event_correct_invoice_id(self, client, mock_paypal_api, mock_container):
         """Emitted event should have correct invoice_id."""
         invoice_id = str(uuid4())
         mock_invoice = MagicMock()
@@ -118,9 +115,7 @@ class TestWebhookEventEmission:
         event = mock_container.event_dispatcher.return_value.emit.call_args[0][0]
         assert str(event.invoice_id) == invoice_id
 
-    def test_event_correct_amount(
-        self, client, mock_paypal_api, mock_container
-    ):
+    def test_event_correct_amount(self, client, mock_paypal_api, mock_container):
         """Emitted event should have correct amount."""
         invoice_id = str(uuid4())
         mock_invoice = MagicMock()
@@ -143,9 +138,7 @@ class TestWebhookEventEmission:
         event = mock_container.event_dispatcher.return_value.emit.call_args[0][0]
         assert event.amount == "99.95"
 
-    def test_event_correct_provider(
-        self, client, mock_paypal_api, mock_container
-    ):
+    def test_event_correct_provider(self, client, mock_paypal_api, mock_container):
         """Emitted event should have provider='paypal'."""
         invoice_id = str(uuid4())
         mock_invoice = MagicMock()

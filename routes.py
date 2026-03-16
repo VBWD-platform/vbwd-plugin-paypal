@@ -40,11 +40,14 @@ def _get_adapter(config):
     from plugins.paypal.sdk_adapter import PayPalSDKAdapter
 
     prefix = "test_" if config.get("sandbox", True) else "live_"
-    return PayPalSDKAdapter(SDKConfig(
-        api_key=config.get(f"{prefix}client_id") or config.get("client_id", ""),
-        api_secret=config.get(f"{prefix}client_secret") or config.get("client_secret", ""),
-        sandbox=config.get("sandbox", True),
-    ))
+    return PayPalSDKAdapter(
+        SDKConfig(
+            api_key=config.get(f"{prefix}client_id") or config.get("client_id", ""),
+            api_secret=config.get(f"{prefix}client_secret")
+            or config.get("client_secret", ""),
+            sandbox=config.get("sandbox", True),
+        )
+    )
 
 
 @paypal_plugin_bp.route("/create-session", methods=["POST"])
@@ -89,10 +92,15 @@ def create_order():
             if paypal_id:
                 invoice.provider_session_id = paypal_id
                 current_app.container.invoice_repository().save(invoice)
-            return jsonify({
-                "session_id": paypal_id,
-                "session_url": response.data.get("session_url"),
-            }), 200
+            return (
+                jsonify(
+                    {
+                        "session_id": paypal_id,
+                        "session_url": response.data.get("session_url"),
+                    }
+                ),
+                200,
+            )
     else:
         meta = {
             **base_meta,
@@ -143,14 +151,21 @@ def capture_order():
 
     # Fallback: look up invoice by provider_session_id if custom_id is empty
     if not custom_id:
-        logger.warning("PayPal custom_id empty for order %s, using provider_session_id fallback", order_id)
+        logger.warning(
+            "PayPal custom_id empty for order %s, using provider_session_id fallback",
+            order_id,
+        )
         invoice_repo = current_app.container.invoice_repository()
         invoice = invoice_repo.find_by_provider_session_id(order_id)
         if invoice:
             custom_id = str(invoice.id)
 
     if custom_id:
-        logger.info("Emitting PaymentCapturedEvent for invoice %s (order %s)", custom_id, order_id)
+        logger.info(
+            "Emitting PaymentCapturedEvent for invoice %s (order %s)",
+            custom_id,
+            order_id,
+        )
         result = emit_payment_captured(
             invoice_id=UUID(custom_id),
             payment_reference=order_id,
@@ -162,13 +177,21 @@ def capture_order():
         if not result.success:
             logger.error("PaymentCapturedEvent handler failed: %s", result.error)
     else:
-        logger.error("Cannot find invoice for PayPal order %s — no custom_id and no provider_session_id match", order_id)
+        logger.error(
+            "Cannot find invoice for PayPal order %s — no custom_id and no provider_session_id match",
+            order_id,
+        )
 
-    return jsonify({
-        "status": resp_data.get("status"),
-        "order_id": order_id,
-        "capture_id": resp_data.get("capture_id"),
-    }), 200
+    return (
+        jsonify(
+            {
+                "status": resp_data.get("status"),
+                "order_id": order_id,
+                "capture_id": resp_data.get("capture_id"),
+            }
+        ),
+        200,
+    )
 
 
 @paypal_plugin_bp.route("/webhook", methods=["POST"])
@@ -191,9 +214,7 @@ def paypal_webhook():
     prefix = "test_" if config.get("sandbox", True) else "live_"
     webhook_id = config.get(f"{prefix}webhook_id") or config.get("webhook_id", "")
     try:
-        event = adapter.verify_webhook_signature(
-            payload, headers, webhook_id
-        )
+        event = adapter.verify_webhook_signature(payload, headers, webhook_id)
     except ValueError:
         return jsonify({"error": "Invalid signature"}), 400
 
@@ -250,11 +271,18 @@ def session_status(order_id):
         if custom_id:
             _reconcile_payment(custom_id, order_id, response.data)
 
-    return jsonify({
-        "status": mapped_status,
-        "amount_total": response.data.get("amount_total", response.data.get("amount")),
-        "currency": response.data.get("currency"),
-    }), 200
+    return (
+        jsonify(
+            {
+                "status": mapped_status,
+                "amount_total": response.data.get(
+                    "amount_total", response.data.get("amount")
+                ),
+                "currency": response.data.get("currency"),
+            }
+        ),
+        200,
+    )
 
 
 # ---- Webhook Handlers ----
@@ -421,14 +449,16 @@ def _create_renewal_invoice(subscription, paypal_sale):
         payment_method="paypal",
         provider_session_id=sale_id,
     )
-    renewal_invoice.line_items.append(InvoiceLineItem(
-        item_type=LineItemType.SUBSCRIPTION,
-        item_id=subscription.id,
-        description=f"Renewal: {plan.name}" if plan else "Subscription renewal",
-        quantity=1,
-        unit_price=amount,
-        total_price=amount,
-    ))
+    renewal_invoice.line_items.append(
+        InvoiceLineItem(
+            item_type=LineItemType.SUBSCRIPTION,
+            item_id=subscription.id,
+            description=f"Renewal: {plan.name}" if plan else "Subscription renewal",
+            quantity=1,
+            unit_price=amount,
+            total_price=amount,
+        )
+    )
     invoice_repo.save(renewal_invoice)
     return renewal_invoice
 
@@ -465,6 +495,7 @@ def _get_or_create_paypal_plan(adapter, invoice, config):
                 )
 
     from src.sdk.interface import SDKResponse
+
     return SDKResponse(success=False, error="No recurring items found")
 
 
