@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 
 from flask import Flask
 
-from src.plugins.config_store import PluginConfigEntry
 from src.events.payment_events import PaymentCapturedEvent
 
 

@@ -3,11 +3,10 @@ import json
 import pytest
 from decimal import Decimal
 from uuid import uuid4, UUID
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from flask import Flask
 
-from src.plugins.config_store import PluginConfigEntry
 from src.models.enums import InvoiceStatus
 
 

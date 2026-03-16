@@ -1,6 +1,5 @@
 """Shared fixtures for PayPal plugin tests."""
 import pytest
-from unittest.mock import MagicMock
 
 from src.sdk.interface import SDKConfig
 from src.plugins.config_store import PluginConfigEntry

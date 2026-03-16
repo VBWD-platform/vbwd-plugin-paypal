@@ -97,7 +97,7 @@ class PayPalSDKAdapter(BaseSDKAdapter):
             if resp.status_code in (200, 201):
                 data = resp.json()
                 approve_url = next(
-                    (l["href"] for l in data.get("links", []) if l["rel"] == "approve"),
+                    (link["href"] for link in data.get("links", []) if link["rel"] == "approve"),
                     None,
                 )
                 return SDKResponse(
@@ -179,7 +179,7 @@ class PayPalSDKAdapter(BaseSDKAdapter):
         if resp.status_code in (200, 201):
             data = resp.json()
             approve_url = next(
-                (l["href"] for l in data.get("links", []) if l["rel"] == "approve"),
+                (link["href"] for link in data.get("links", []) if link["rel"] == "approve"),
                 None,
             )
             return SDKResponse(
