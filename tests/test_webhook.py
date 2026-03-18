@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from flask import Flask
 
-from src.events.payment_events import PaymentCapturedEvent
+from vbwd.events.payment_events import PaymentCapturedEvent
 
 
 @pytest.fixture
@@ -25,9 +25,9 @@ def app(mock_paypal_api, mock_config_store, mock_container, mocker):
     flask_app = Flask(__name__)
     flask_app.config["TESTING"] = True
 
-    mocker.patch("src.middleware.auth.AuthService", MagicMock())
-    mocker.patch("src.middleware.auth.UserRepository", MagicMock())
-    mocker.patch("src.middleware.auth.db", MagicMock())
+    mocker.patch("vbwd.middleware.auth.AuthService", MagicMock())
+    mocker.patch("vbwd.middleware.auth.UserRepository", MagicMock())
+    mocker.patch("vbwd.middleware.auth.db", MagicMock())
 
     from plugins.paypal.routes import paypal_plugin_bp
 

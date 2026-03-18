@@ -1,8 +1,8 @@
 """Shared fixtures for PayPal plugin tests."""
 import pytest
 
-from src.sdk.interface import SDKConfig
-from src.plugins.config_store import PluginConfigEntry
+from vbwd.sdk.interface import SDKConfig
+from vbwd.plugins.config_store import PluginConfigEntry
 
 
 @pytest.fixture

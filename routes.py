@@ -5,18 +5,18 @@ from uuid import UUID
 
 from flask import Blueprint, jsonify, request, current_app, g
 
-from src.middleware.auth import require_auth
-from src.plugins.payment_route_helpers import (
+from vbwd.middleware.auth import require_auth
+from vbwd.plugins.payment_route_helpers import (
     check_plugin_enabled,
     validate_invoice_for_payment,
     emit_payment_captured,
     determine_session_mode,
 )
-from src.sdk.interface import SDKConfig
-from src.models.enums import LineItemType, InvoiceStatus
-from src.models.invoice_line_item import InvoiceLineItem
-from src.models.invoice import UserInvoice
-from src.events.payment_events import (
+from vbwd.sdk.interface import SDKConfig
+from vbwd.models.enums import LineItemType, InvoiceStatus
+from vbwd.models.invoice_line_item import InvoiceLineItem
+from vbwd.models.invoice import UserInvoice
+from vbwd.events.payment_events import (
     SubscriptionCancelledEvent,
     PaymentFailedEvent,
 )
@@ -465,8 +465,8 @@ def _create_renewal_invoice(subscription, paypal_sale):
 
 def _get_or_create_paypal_plan(adapter, invoice, config):
     """Get or create a PayPal Billing Plan for subscription items."""
-    from src.extensions import db
-    from src.models.subscription import Subscription
+    from vbwd.extensions import db
+    from vbwd.models.subscription import Subscription
 
     for li in invoice.line_items:
         if li.item_type == LineItemType.SUBSCRIPTION:
@@ -494,7 +494,7 @@ def _get_or_create_paypal_plan(adapter, invoice, config):
                     interval_count=interval["interval_count"],
                 )
 
-    from src.sdk.interface import SDKResponse
+    from vbwd.sdk.interface import SDKResponse
 
     return SDKResponse(success=False, error="No recurring items found")
 
