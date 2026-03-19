@@ -29,7 +29,7 @@ def app(mock_paypal_api, mock_config_store, mock_container, mocker):
     mocker.patch("vbwd.middleware.auth.UserRepository", MagicMock())
     mocker.patch("vbwd.middleware.auth.db", MagicMock())
 
-    from plugins.paypal.routes import paypal_plugin_bp
+    from plugins.paypal.paypal.routes import paypal_plugin_bp
 
     flask_app.register_blueprint(paypal_plugin_bp, url_prefix="/api/v1/plugins/paypal")
     flask_app.config_store = mock_config_store

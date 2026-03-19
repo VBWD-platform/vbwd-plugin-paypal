@@ -11,7 +11,7 @@ from vbwd.sdk.base import BaseSDKAdapter
 @pytest.fixture
 def adapter(mock_paypal_api):
     """Create PayPalSDKAdapter with mocked requests module."""
-    from plugins.paypal.sdk_adapter import PayPalSDKAdapter
+    from plugins.paypal.paypal.sdk_adapter import PayPalSDKAdapter
 
     config = SDKConfig(api_key="ATest123", api_secret="secret456", sandbox=True)
     return PayPalSDKAdapter(config)

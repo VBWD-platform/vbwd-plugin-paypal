@@ -32,7 +32,7 @@ def mock_paypal_api(mocker):
 
     Returns the mock so tests can configure specific responses.
     """
-    mock = mocker.patch("plugins.paypal.sdk_adapter.requests")
+    mock = mocker.patch("plugins.paypal.paypal.sdk_adapter.requests")
     # Default: successful OAuth token
     token_resp = mocker.MagicMock()
     token_resp.status_code = 200

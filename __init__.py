@@ -31,7 +31,7 @@ class PayPalPlugin(PaymentProviderPlugin):
         )
 
     def get_blueprint(self) -> Optional["Blueprint"]:
-        from plugins.paypal.routes import paypal_plugin_bp
+        from plugins.paypal.paypal.routes import paypal_plugin_bp
 
         return paypal_plugin_bp
 
@@ -47,7 +47,7 @@ class PayPalPlugin(PaymentProviderPlugin):
     def _get_adapter(self):
         """Instantiate PayPalSDKAdapter from config_store (per-request)."""
         from flask import current_app
-        from plugins.paypal.sdk_adapter import PayPalSDKAdapter
+        from plugins.paypal.paypal.sdk_adapter import PayPalSDKAdapter
         from vbwd.sdk.interface import SDKConfig
 
         config_store = current_app.config_store
@@ -69,17 +69,49 @@ class PayPalPlugin(PaymentProviderPlugin):
         subscription_id: UUID,
         user_id: UUID,
         metadata: Optional[Dict[str, Any]] = None,
+        capture: bool = True,
     ) -> PaymentResult:
         adapter = self._get_adapter()
         meta = metadata or {}
         meta.update({"subscription_id": str(subscription_id), "user_id": str(user_id)})
-        resp = adapter.create_payment_intent(amount, currency, meta)
+        intent = "CAPTURE" if capture else "AUTHORIZE"
+        resp = adapter.create_payment_intent(amount, currency, meta, intent=intent)
+        status = PaymentStatus.PENDING if capture else PaymentStatus.AUTHORIZED
         if resp.success:
             return PaymentResult(
                 success=True,
                 transaction_id=resp.data.get("session_id"),
-                status=PaymentStatus.PENDING,
+                status=status,
                 metadata=resp.data,
+            )
+        return PaymentResult(success=False, error_message=resp.error)
+
+    def capture_payment(
+        self,
+        payment_id: str,
+        amount: Optional[Decimal] = None,
+    ) -> PaymentResult:
+        adapter = self._get_adapter()
+        resp = adapter.capture_order(payment_id)
+        if resp.success:
+            return PaymentResult(
+                success=True,
+                transaction_id=resp.data.get("capture_id"),
+                status=PaymentStatus.COMPLETED,
+            )
+        return PaymentResult(success=False, error_message=resp.error)
+
+    def release_authorization(
+        self,
+        payment_id: str,
+    ) -> PaymentResult:
+        adapter = self._get_adapter()
+        resp = adapter.void_authorization(payment_id)
+        if resp.success:
+            return PaymentResult(
+                success=True,
+                transaction_id=payment_id,
+                status=PaymentStatus.CANCELLED,
             )
         return PaymentResult(success=False, error_message=resp.error)
 

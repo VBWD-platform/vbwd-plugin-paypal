@@ -67,12 +67,13 @@ class PayPalSDKAdapter(BaseSDKAdapter):
         currency: str,
         metadata: Dict[str, Any],
         idempotency_key: Optional[str] = None,
+        intent: str = "CAPTURE",
     ) -> SDKResponse:
-        """Create PayPal Order for one-time payment."""
+        """Create PayPal Order. intent='CAPTURE' or 'AUTHORIZE'."""
 
         def _create():
             order_data = {
-                "intent": "CAPTURE",
+                "intent": intent,
                 "purchase_units": [
                     {
                         "amount": {
@@ -145,6 +146,46 @@ class PayPalSDKAdapter(BaseSDKAdapter):
             )
         return SDKResponse(
             success=False, error=resp.text, error_code=str(resp.status_code)
+        )
+
+    def void_authorization(self, order_id: str) -> SDKResponse:
+        """Void an authorized PayPal Order."""
+        # Get authorization ID from order
+        resp = requests.get(
+            f"{self._base_url}/v2/checkout/orders/{order_id}",
+            headers=self._headers(),
+            timeout=self._config.timeout,
+        )
+        if resp.status_code != 200:
+            return SDKResponse(
+                success=False, error=resp.text, error_code=str(resp.status_code)
+            )
+
+        data = resp.json()
+        authorizations = (
+            data.get("purchase_units", [{}])[0]
+            .get("payments", {})
+            .get("authorizations", [])
+        )
+        if not authorizations:
+            return SDKResponse(success=False, error="No authorization found")
+
+        authorization_id = authorizations[0].get("id", "")
+        void_resp = requests.post(
+            f"{self._base_url}/v2/payments/authorizations/{authorization_id}/void",
+            headers=self._headers(),
+            json={},
+            timeout=self._config.timeout,
+        )
+        if void_resp.status_code in (200, 204):
+            return SDKResponse(
+                success=True,
+                data={"authorization_id": authorization_id, "status": "VOIDED"},
+            )
+        return SDKResponse(
+            success=False,
+            error=void_resp.text,
+            error_code=str(void_resp.status_code),
         )
 
     def capture_payment(
