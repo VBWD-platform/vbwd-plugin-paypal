@@ -6,12 +6,7 @@ from unittest.mock import MagicMock
 
 from flask import Flask
 
-from vbwd.models.enums import LineItemType
-from vbwd.events.payment_events import (
-    PaymentCapturedEvent,
-    PaymentFailedEvent,
-    SubscriptionCancelledEvent,
-)
+from vbwd.events.payment_events import PaymentCapturedEvent
 
 
 @pytest.fixture
@@ -97,27 +92,10 @@ class TestSubscriptionActivated:
     """Test BILLING.SUBSCRIPTION.ACTIVATED webhook handling."""
 
     def test_webhook_subscription_activated_links(
-        self, client, mock_paypal_api, mock_container
+        self, client, mock_paypal_api, fake_lifecycle
     ):
-        """Should store provider_subscription_id on our Subscription model."""
+        """Activation links the provider subscription via the lifecycle port."""
         invoice_id = str(uuid4())
-        sub_id = uuid4()
-
-        mock_invoice = MagicMock()
-        mock_invoice.id = UUID(invoice_id)
-        mock_li = MagicMock()
-        mock_li.item_type = LineItemType.SUBSCRIPTION
-        mock_li.item_id = sub_id
-        mock_invoice.line_items = [mock_li]
-        mock_container.invoice_repository.return_value.find_by_id.return_value = (
-            mock_invoice
-        )
-
-        mock_subscription = MagicMock()
-        mock_subscription.id = sub_id
-        mock_container.subscription_repository.return_value.find_by_id.return_value = (
-            mock_subscription
-        )
 
         event_payload = {
             "event_type": "BILLING.SUBSCRIPTION.ACTIVATED",
@@ -134,9 +112,9 @@ class TestSubscriptionActivated:
         resp = _make_webhook_call(client, mock_paypal_api, event_payload)
         assert resp.status_code == 200
 
-        # Verify provider_subscription_id was set
-        assert mock_subscription.provider_subscription_id == "I-SUB-ACTIVATED"
-        mock_container.subscription_repository.return_value.save.assert_called_once()
+        fake_lifecycle.link_provider_subscription.assert_called_once_with(
+            UUID(invoice_id), "I-SUB-ACTIVATED"
+        )
 
     def test_webhook_subscription_activated_emits(
         self, client, mock_paypal_api, mock_container
@@ -176,23 +154,11 @@ class TestSaleCompleted:
     """Test PAYMENT.SALE.COMPLETED webhook (subscription renewal)."""
 
     def test_webhook_sale_completed_creates_renewal(
-        self, client, mock_paypal_api, mock_container
+        self, client, mock_paypal_api, mock_container, fake_lifecycle
     ):
-        """Should create renewal invoice for subscription payment."""
-        sub_id = uuid4()
-        mock_subscription = MagicMock()
-        mock_subscription.id = sub_id
-        mock_subscription.user_id = uuid4()
-        mock_plan = MagicMock()
-        mock_plan.id = uuid4()
-        mock_plan.name = "Pro Plan"
-        mock_subscription.tarif_plan = mock_plan
-        mock_container.subscription_repository.return_value.find_by_provider_subscription_id.return_value = (
-            mock_subscription
-        )
-        mock_container.invoice_repository.return_value.find_by_provider_session_id.return_value = (
-            None
-        )
+        """Renewal is recorded via the port, then payment-captured is emitted."""
+        renewal_invoice_id = uuid4()
+        fake_lifecycle.record_provider_renewal.return_value = renewal_invoice_id
 
         event_payload = {
             "event_type": "PAYMENT.SALE.COMPLETED",
@@ -205,25 +171,22 @@ class TestSaleCompleted:
         resp = _make_webhook_call(client, mock_paypal_api, event_payload)
         assert resp.status_code == 200
 
-        # Verify renewal invoice was created
-        mock_container.invoice_repository.return_value.save.assert_called_once()
-        mock_container.event_dispatcher.return_value.emit.assert_called_once()
+        fake_lifecycle.record_provider_renewal.assert_called_once_with(
+            provider="paypal",
+            provider_subscription_id="I-SUB-RENEW",
+            amount="9.99",
+            currency="USD",
+            provider_reference="SALE-REN-1",
+        )
+        dispatcher = mock_container.event_dispatcher.return_value
+        dispatcher.emit.assert_called_once()
+        assert dispatcher.emit.call_args[0][0].invoice_id == renewal_invoice_id
 
     def test_webhook_sale_completed_deduplication(
-        self, client, mock_paypal_api, mock_container
+        self, client, mock_paypal_api, mock_container, fake_lifecycle
     ):
-        """Should not create duplicate invoice for same sale_id."""
-        mock_subscription = MagicMock()
-        mock_subscription.id = uuid4()
-        mock_container.subscription_repository.return_value.find_by_provider_subscription_id.return_value = (
-            mock_subscription
-        )
-
-        existing_invoice = MagicMock()
-        existing_invoice.id = uuid4()
-        mock_container.invoice_repository.return_value.find_by_provider_session_id.return_value = (
-            existing_invoice
-        )
+        """When the port returns no renewal id (dedup), nothing is emitted."""
+        fake_lifecycle.record_provider_renewal.return_value = None
 
         event_payload = {
             "event_type": "PAYMENT.SALE.COMPLETED",
@@ -236,26 +199,17 @@ class TestSaleCompleted:
         resp = _make_webhook_call(client, mock_paypal_api, event_payload)
         assert resp.status_code == 200
 
-        # Invoice repo save NOT called (deduplication)
-        mock_container.invoice_repository.return_value.save.assert_not_called()
+        fake_lifecycle.record_provider_renewal.assert_called_once()
+        mock_container.event_dispatcher.return_value.emit.assert_not_called()
 
 
 class TestSubscriptionCancelled:
     """Test BILLING.SUBSCRIPTION.CANCELLED webhook."""
 
     def test_webhook_subscription_cancelled(
-        self, client, mock_paypal_api, mock_container
+        self, client, mock_paypal_api, fake_lifecycle
     ):
-        """Should emit SubscriptionCancelledEvent."""
-        sub_id = uuid4()
-        user_id = uuid4()
-        mock_subscription = MagicMock()
-        mock_subscription.id = sub_id
-        mock_subscription.user_id = user_id
-        mock_container.subscription_repository.return_value.find_by_provider_subscription_id.return_value = (
-            mock_subscription
-        )
-
+        """Cancellation is delegated to the lifecycle port."""
         event_payload = {
             "event_type": "BILLING.SUBSCRIPTION.CANCELLED",
             "resource": {"id": "I-SUB-CANCEL"},
@@ -263,25 +217,18 @@ class TestSubscriptionCancelled:
         resp = _make_webhook_call(client, mock_paypal_api, event_payload)
         assert resp.status_code == 200
 
-        emit_call = mock_container.event_dispatcher.return_value.emit
-        emit_call.assert_called_once()
-        event = emit_call.call_args[0][0]
-        assert isinstance(event, SubscriptionCancelledEvent)
-        assert event.reason == "paypal_subscription_cancelled"
+        fake_lifecycle.cancel_by_provider_subscription_id.assert_called_once_with(
+            provider="paypal",
+            provider_subscription_id="I-SUB-CANCEL",
+            reason="paypal_subscription_cancelled",
+        )
 
 
 class TestPaymentFailed:
     """Test BILLING.SUBSCRIPTION.PAYMENT.FAILED webhook."""
 
-    def test_webhook_payment_failed(self, client, mock_paypal_api, mock_container):
-        """Should emit PaymentFailedEvent."""
-        mock_subscription = MagicMock()
-        mock_subscription.id = uuid4()
-        mock_subscription.user_id = uuid4()
-        mock_container.subscription_repository.return_value.find_by_provider_subscription_id.return_value = (
-            mock_subscription
-        )
-
+    def test_webhook_payment_failed(self, client, mock_paypal_api, fake_lifecycle):
+        """Payment failure is delegated to the lifecycle port."""
         event_payload = {
             "event_type": "BILLING.SUBSCRIPTION.PAYMENT.FAILED",
             "resource": {"id": "I-SUB-FAIL"},
@@ -289,11 +236,11 @@ class TestPaymentFailed:
         resp = _make_webhook_call(client, mock_paypal_api, event_payload)
         assert resp.status_code == 200
 
-        emit_call = mock_container.event_dispatcher.return_value.emit
-        emit_call.assert_called_once()
-        event = emit_call.call_args[0][0]
-        assert isinstance(event, PaymentFailedEvent)
-        assert event.provider == "paypal"
+        fake_lifecycle.mark_provider_payment_failed.assert_called_once_with(
+            provider="paypal",
+            provider_subscription_id="I-SUB-FAIL",
+            error_message="PayPal subscription payment failed",
+        )
 
 
 class TestCaptureOrderEmitsEvent:

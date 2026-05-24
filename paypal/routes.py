@@ -13,13 +13,9 @@ from vbwd.plugins.payment_route_helpers import (
     determine_session_mode,
 )
 from vbwd.sdk.interface import SDKConfig
-from vbwd.models.enums import LineItemType, InvoiceStatus
-from vbwd.models.invoice_line_item import InvoiceLineItem
-from vbwd.models.invoice import UserInvoice
-from vbwd.events.payment_events import (
-    SubscriptionCancelledEvent,
-    PaymentFailedEvent,
-)
+from vbwd.models.enums import InvoiceStatus
+from vbwd.events.line_item_registry import line_item_registry
+from vbwd.services.subscription_lifecycle import resolve_subscription_lifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +33,7 @@ BILLING_PERIOD_TO_PAYPAL = {
 
 def _get_adapter(config):
     """Instantiate PayPalSDKAdapter from plugin config."""
-    from plugins.paypal.sdk_adapter import PayPalSDKAdapter
+    from plugins.paypal.paypal.sdk_adapter import PayPalSDKAdapter
 
     prefix = "test_" if config.get("sandbox", True) else "live_"
     return PayPalSDKAdapter(
@@ -340,15 +336,19 @@ def _handle_sale_completed(resource):
     if not billing_agreement_id:
         return
 
-    container = current_app.container
-    sub_repo = container.subscription_repository()
-    subscription = sub_repo.find_by_provider_subscription_id(billing_agreement_id)
-    if not subscription:
+    # Renewal invoice owned by the subscription plugin (lifecycle port).
+    renewal_invoice_id = resolve_subscription_lifecycle().record_provider_renewal(
+        provider="paypal",
+        provider_subscription_id=billing_agreement_id,
+        amount=resource.get("amount", {}).get("total", "0"),
+        currency=resource.get("amount", {}).get("currency", "USD"),
+        provider_reference=resource.get("id", ""),
+    )
+    if not renewal_invoice_id:
         return
 
-    renewal_invoice = _create_renewal_invoice(subscription, resource)
     emit_payment_captured(
-        invoice_id=renewal_invoice.id,
+        invoice_id=renewal_invoice_id,
         payment_reference=resource.get("id", ""),
         amount=resource.get("amount", {}).get("total", "0"),
         currency=resource.get("amount", {}).get("currency", "USD"),
@@ -363,19 +363,11 @@ def _handle_subscription_cancelled(resource):
     if not paypal_sub_id:
         return
 
-    container = current_app.container
-    sub_repo = container.subscription_repository()
-    subscription = sub_repo.find_by_provider_subscription_id(paypal_sub_id)
-    if not subscription:
-        return
-
-    event = SubscriptionCancelledEvent(
-        subscription_id=subscription.id,
-        user_id=subscription.user_id,
-        reason="paypal_subscription_cancelled",
+    resolve_subscription_lifecycle().cancel_by_provider_subscription_id(
         provider="paypal",
+        provider_subscription_id=paypal_sub_id,
+        reason="paypal_subscription_cancelled",
     )
-    container.event_dispatcher().emit(event)
 
 
 def _handle_payment_failed(resource):
@@ -384,115 +376,55 @@ def _handle_payment_failed(resource):
     if not paypal_sub_id:
         return
 
-    container = current_app.container
-    sub_repo = container.subscription_repository()
-    subscription = sub_repo.find_by_provider_subscription_id(paypal_sub_id)
-    if not subscription:
-        return
-
-    event = PaymentFailedEvent(
-        subscription_id=subscription.id,
-        user_id=subscription.user_id,
-        error_code="payment_failed",
-        error_message="PayPal subscription payment failed",
+    resolve_subscription_lifecycle().mark_provider_payment_failed(
         provider="paypal",
+        provider_subscription_id=paypal_sub_id,
+        error_message="PayPal subscription payment failed",
     )
-    container.event_dispatcher().emit(event)
 
 
 # ---- Helpers ----
 
 
 def _link_paypal_subscription(invoice_id, provider_subscription_id):
-    """Store provider_subscription_id on our Subscription after activation."""
-    container = current_app.container
-    invoice_repo = container.invoice_repository()
-    sub_repo = container.subscription_repository()
+    """Store provider_subscription_id on our Subscription after activation.
 
-    invoice = invoice_repo.find_by_id(invoice_id)
-    if not invoice:
-        return
-
-    for li in invoice.line_items:
-        if li.item_type == LineItemType.SUBSCRIPTION:
-            subscription = sub_repo.find_by_id(li.item_id)
-            if subscription:
-                subscription.provider_subscription_id = provider_subscription_id
-                sub_repo.save(subscription)
-                break
-
-
-def _create_renewal_invoice(subscription, paypal_sale):
-    """Create a renewal invoice from PayPal subscription sale event."""
-    container = current_app.container
-    invoice_repo = container.invoice_repository()
-
-    # Deduplication
-    sale_id = paypal_sale.get("id", "")
-    existing = invoice_repo.find_by_provider_session_id(sale_id)
-    if existing:
-        return existing
-
-    plan = subscription.tarif_plan
-    amount = Decimal(paypal_sale.get("amount", {}).get("total", "0"))
-    currency = paypal_sale.get("amount", {}).get("currency", "USD").upper()
-
-    renewal_invoice = UserInvoice(
-        user_id=subscription.user_id,
-        tarif_plan_id=plan.id if plan else None,
-        subscription_id=subscription.id,
-        invoice_number=UserInvoice.generate_invoice_number(),
-        amount=amount,
-        total_amount=amount,
-        currency=currency,
-        status=InvoiceStatus.PENDING,
-        payment_method="paypal",
-        provider_session_id=sale_id,
+    Delegated to the subscription-lifecycle port (no subscription model import).
+    """
+    resolve_subscription_lifecycle().link_provider_subscription(
+        invoice_id, provider_subscription_id
     )
-    renewal_invoice.line_items.append(
-        InvoiceLineItem(
-            item_type=LineItemType.SUBSCRIPTION,
-            item_id=subscription.id,
-            description=f"Renewal: {plan.name}" if plan else "Subscription renewal",
-            quantity=1,
-            unit_price=amount,
-            total_price=amount,
-        )
-    )
-    invoice_repo.save(renewal_invoice)
-    return renewal_invoice
 
 
 def _get_or_create_paypal_plan(adapter, invoice, config):
-    """Get or create a PayPal Billing Plan for subscription items."""
-    from vbwd.extensions import db
-    from vbwd.models.subscription import Subscription
+    """Get or create a PayPal Billing Plan for the first recurring line item.
 
+    Recurring detection + name/period come from the extensible line-item
+    registry (no subscription model import); one-off items are skipped.
+    """
     for li in invoice.line_items:
-        if li.item_type == LineItemType.SUBSCRIPTION:
-            sub = db.session.get(Subscription, li.item_id)
-            if sub and sub.tarif_plan and sub.tarif_plan.is_recurring:
-                plan = sub.tarif_plan
-                amount = str(li.unit_price)
-                currency = (invoice.currency or "USD").upper()
-                period = plan.billing_period.value
-                interval = BILLING_PERIOD_TO_PAYPAL.get(
-                    period, {"interval_unit": "MONTH", "interval_count": 1}
-                )
+        spec = line_item_registry.recurring_billing_spec(li)
+        if not spec:
+            continue
+        amount = str(li.unit_price)
+        currency = (invoice.currency or "USD").upper()
+        interval = BILLING_PERIOD_TO_PAYPAL.get(
+            spec.billing_period, {"interval_unit": "MONTH", "interval_count": 1}
+        )
 
-                # Create product first
-                product_resp = adapter.create_product(plan.name)
-                if not product_resp.success:
-                    return product_resp
+        # Create product first
+        product_resp = adapter.create_product(spec.name)
+        if not product_resp.success:
+            return product_resp
 
-                return adapter.create_billing_plan(
-                    product_id=product_resp.data["product_id"],
-                    name=plan.name,
-                    amount=amount,
-                    currency=currency,
-                    interval=interval["interval_unit"],
-                    interval_count=interval["interval_count"],
-                )
+        return adapter.create_billing_plan(
+            product_id=product_resp.data["product_id"],
+            name=spec.name,
+            amount=amount,
+            currency=currency,
+            interval=interval["interval_unit"],
+            interval_count=interval["interval_count"],
+        )
 
     from vbwd.sdk.interface import SDKResponse
 

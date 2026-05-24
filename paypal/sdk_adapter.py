@@ -188,6 +188,12 @@ class PayPalSDKAdapter(BaseSDKAdapter):
             error_code=str(void_resp.status_code),
         )
 
+    def release_authorization(self, payment_intent_id: str) -> SDKResponse:
+        """Release (void) an authorized payment (ISDKAdapter interface).
+
+        Delegates to void_authorization (PayPal voids by order id)."""
+        return self.void_authorization(payment_intent_id)
+
     def capture_payment(
         self, payment_intent_id: str, idempotency_key: Optional[str] = None
     ) -> SDKResponse:
