@@ -169,6 +169,12 @@ def capture_order():
             currency=resp_data.get("currency", "USD"),
             provider="paypal",
             transaction_id=resp_data.get("capture_id", ""),
+            metadata={
+                "paypal": {
+                    "order_id": order_id,
+                    "capture_id": resp_data.get("capture_id", ""),
+                }
+            },
         )
         if not result.success:
             logger.error("PaymentCapturedEvent handler failed: %s", result.error)
@@ -306,6 +312,7 @@ def _handle_capture_completed(resource):
         currency=currency,
         provider="paypal",
         transaction_id=capture_id,
+        metadata={"paypal": {"capture_id": capture_id, "via": "webhook"}},
     )
 
 
@@ -327,6 +334,7 @@ def _handle_subscription_activated(resource):
         currency=last_payment.get("amount", {}).get("currency_code", "USD"),
         provider="paypal",
         transaction_id=paypal_sub_id,
+        metadata={"paypal": {"subscription_id": paypal_sub_id, "via": "subscription_activated"}},
     )
 
 
@@ -354,6 +362,12 @@ def _handle_sale_completed(resource):
         currency=resource.get("amount", {}).get("currency", "USD"),
         provider="paypal",
         transaction_id=resource.get("id", ""),
+        metadata={
+            "paypal": {
+                "sale_id": resource.get("id", ""),
+                "via": "sale_completed",
+            }
+        },
     )
 
 
@@ -456,4 +470,5 @@ def _reconcile_payment(custom_id, order_id, response_data):
         currency=response_data.get("currency", "USD"),
         provider="paypal",
         transaction_id=order_id,
+        metadata={"paypal": {"order_id": order_id, "reconciled": True}},
     )
