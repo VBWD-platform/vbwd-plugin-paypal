@@ -64,13 +64,10 @@ def create_order():
     mode = determine_session_mode(invoice)
     base_meta = {"invoice_id": str(invoice.id), "user_id": str(g.user_id)}
 
-    frontend_base = (
-        request.headers.get("Origin")
-        or request.headers.get("Referer", "").rstrip("/").rsplit("/pay", 1)[0]
-        or request.host_url.rstrip("/")
-    )
-    success_url = f"{frontend_base}/pay/paypal/success"
-    cancel_url = f"{frontend_base}/pay/paypal/cancel"
+    # S21 — shared helper.
+    from vbwd.plugins.payment_route_helpers import build_provider_redirect_urls
+
+    success_url, cancel_url = build_provider_redirect_urls(request, "paypal")
 
     if mode == "subscription":
         plan_resp = _get_or_create_paypal_plan(adapter, invoice, config)
