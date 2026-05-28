@@ -331,7 +331,12 @@ def _handle_subscription_activated(resource):
         currency=last_payment.get("amount", {}).get("currency_code", "USD"),
         provider="paypal",
         transaction_id=paypal_sub_id,
-        metadata={"paypal": {"subscription_id": paypal_sub_id, "via": "subscription_activated"}},
+        metadata={
+            "paypal": {
+                "subscription_id": paypal_sub_id,
+                "via": "subscription_activated",
+            }
+        },
     )
 
 
