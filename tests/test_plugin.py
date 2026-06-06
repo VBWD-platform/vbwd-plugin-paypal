@@ -44,10 +44,11 @@ class TestPayPalPluginMetadata:
         """get_url_prefix should return '/api/v1/plugins/paypal'."""
         assert plugin.get_url_prefix() == "/api/v1/plugins/paypal"
 
-    def test_declares_subscription_dependency(self, plugin):
-        """S07 — PayPal recurring billing calls resolve_subscription_lifecycle,
-        so the plugin MUST declare 'subscription' in dependencies."""
-        assert "subscription" in plugin.metadata.dependencies
+    def test_stays_subscription_free(self, plugin):
+        """S50.4 — recurring billing is event-driven: webhooks publish
+        domain-neutral facts to the bus and no-op when nothing subscribes, so
+        PayPal declares NO subscription dependency and runs without it."""
+        assert "subscription" not in plugin.metadata.dependencies
 
     def test_on_enable_no_error(self, plugin):
         """on_enable should not raise any exception."""

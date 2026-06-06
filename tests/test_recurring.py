@@ -92,9 +92,9 @@ class TestSubscriptionActivated:
     """Test BILLING.SUBSCRIPTION.ACTIVATED webhook handling."""
 
     def test_webhook_subscription_activated_links(
-        self, client, mock_paypal_api, fake_lifecycle
+        self, client, mock_paypal_api, published_events
     ):
-        """Activation links the provider subscription via the lifecycle port."""
+        """Activation publishes the provider-linked fact to the bus."""
         invoice_id = str(uuid4())
 
         event_payload = {
@@ -112,9 +112,14 @@ class TestSubscriptionActivated:
         resp = _make_webhook_call(client, mock_paypal_api, event_payload)
         assert resp.status_code == 200
 
-        fake_lifecycle.link_provider_subscription.assert_called_once_with(
-            UUID(invoice_id), "I-SUB-ACTIVATED"
-        )
+        linked = [d for n, d in published_events if n == "payment.provider_linked"]
+        assert linked == [
+            {
+                "invoice_id": invoice_id,
+                "provider": "paypal",
+                "provider_ref_id": "I-SUB-ACTIVATED",
+            }
+        ]
 
     def test_webhook_subscription_activated_emits(
         self, client, mock_paypal_api, mock_container
@@ -153,13 +158,15 @@ class TestSubscriptionActivated:
 class TestSaleCompleted:
     """Test PAYMENT.SALE.COMPLETED webhook (subscription renewal)."""
 
-    def test_webhook_sale_completed_creates_renewal(
-        self, client, mock_paypal_api, mock_container, fake_lifecycle
+    def test_webhook_sale_completed_publishes_recurring_charge(
+        self, client, mock_paypal_api, published_events
     ):
-        """Renewal is recorded via the port, then payment-captured is emitted."""
-        renewal_invoice_id = uuid4()
-        fake_lifecycle.record_provider_renewal.return_value = renewal_invoice_id
+        """Renewal publishes a recurring-charge fact carrying metadata verbatim.
 
+        The subscription subscriber creates the renewal invoice and re-emits
+        payment.captured; dedup is the subscriber's concern, so the route always
+        publishes.
+        """
         event_payload = {
             "event_type": "PAYMENT.SALE.COMPLETED",
             "resource": {
@@ -171,23 +178,22 @@ class TestSaleCompleted:
         resp = _make_webhook_call(client, mock_paypal_api, event_payload)
         assert resp.status_code == 200
 
-        fake_lifecycle.record_provider_renewal.assert_called_once_with(
-            provider="paypal",
-            provider_subscription_id="I-SUB-RENEW",
-            amount="9.99",
-            currency="USD",
-            provider_reference="SALE-REN-1",
-        )
-        dispatcher = mock_container.event_dispatcher.return_value
-        dispatcher.emit.assert_called_once()
-        assert dispatcher.emit.call_args[0][0].invoice_id == renewal_invoice_id
+        charges = [d for n, d in published_events if n == "payment.recurring_charge"]
+        assert len(charges) == 1
+        charge = charges[0]
+        assert charge["provider"] == "paypal"
+        assert charge["provider_ref_id"] == "I-SUB-RENEW"
+        assert charge["amount"] == "9.99"
+        assert charge["currency"] == "USD"
+        assert charge["provider_reference"] == "SALE-REN-1"
+        assert charge["metadata"]["paypal"]["sale_id"] == "SALE-REN-1"
 
-    def test_webhook_sale_completed_deduplication(
-        self, client, mock_paypal_api, mock_container, fake_lifecycle
+    def test_webhook_sale_completed_no_subscriber_is_noop(
+        self, client, mock_paypal_api
     ):
-        """When the port returns no renewal id (dedup), nothing is emitted."""
-        fake_lifecycle.record_provider_renewal.return_value = None
-
+        """With NO subscriber registered (subscription disabled), the renewal
+        webhook still returns 200 — the published fact is a no-op, proving
+        paypal stays subscription-free."""
         event_payload = {
             "event_type": "PAYMENT.SALE.COMPLETED",
             "resource": {
@@ -199,17 +205,14 @@ class TestSaleCompleted:
         resp = _make_webhook_call(client, mock_paypal_api, event_payload)
         assert resp.status_code == 200
 
-        fake_lifecycle.record_provider_renewal.assert_called_once()
-        mock_container.event_dispatcher.return_value.emit.assert_not_called()
-
 
 class TestSubscriptionCancelled:
     """Test BILLING.SUBSCRIPTION.CANCELLED webhook."""
 
     def test_webhook_subscription_cancelled(
-        self, client, mock_paypal_api, fake_lifecycle
+        self, client, mock_paypal_api, published_events
     ):
-        """Cancellation is delegated to the lifecycle port."""
+        """Cancellation publishes a provider-cancelled fact to the bus."""
         event_payload = {
             "event_type": "BILLING.SUBSCRIPTION.CANCELLED",
             "resource": {"id": "I-SUB-CANCEL"},
@@ -217,18 +220,21 @@ class TestSubscriptionCancelled:
         resp = _make_webhook_call(client, mock_paypal_api, event_payload)
         assert resp.status_code == 200
 
-        fake_lifecycle.cancel_by_provider_subscription_id.assert_called_once_with(
-            provider="paypal",
-            provider_subscription_id="I-SUB-CANCEL",
-            reason="paypal_subscription_cancelled",
-        )
+        cancels = [d for n, d in published_events if n == "payment.provider_cancelled"]
+        assert cancels == [
+            {
+                "provider": "paypal",
+                "provider_ref_id": "I-SUB-CANCEL",
+                "reason": "paypal_subscription_cancelled",
+            }
+        ]
 
 
 class TestPaymentFailed:
     """Test BILLING.SUBSCRIPTION.PAYMENT.FAILED webhook."""
 
-    def test_webhook_payment_failed(self, client, mock_paypal_api, fake_lifecycle):
-        """Payment failure is delegated to the lifecycle port."""
+    def test_webhook_payment_failed(self, client, mock_paypal_api, published_events):
+        """Payment failure publishes a recurring-failed fact to the bus."""
         event_payload = {
             "event_type": "BILLING.SUBSCRIPTION.PAYMENT.FAILED",
             "resource": {"id": "I-SUB-FAIL"},
@@ -236,11 +242,14 @@ class TestPaymentFailed:
         resp = _make_webhook_call(client, mock_paypal_api, event_payload)
         assert resp.status_code == 200
 
-        fake_lifecycle.mark_provider_payment_failed.assert_called_once_with(
-            provider="paypal",
-            provider_subscription_id="I-SUB-FAIL",
-            error_message="PayPal subscription payment failed",
-        )
+        failed = [d for n, d in published_events if n == "payment.recurring_failed"]
+        assert failed == [
+            {
+                "provider": "paypal",
+                "provider_ref_id": "I-SUB-FAIL",
+                "error_message": "PayPal subscription payment failed",
+            }
+        ]
 
 
 class TestCaptureOrderEmitsEvent:
