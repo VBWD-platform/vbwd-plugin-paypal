@@ -395,6 +395,80 @@ class PayPalSDKAdapter(BaseSDKAdapter):
                 return json.loads(payload)
         raise ValueError("Invalid PayPal webhook signature")
 
+    def create_payout_batch(
+        self,
+        amount: Decimal,
+        currency: str,
+        receiver_email: str,
+        reference_id: str,
+    ) -> SDKResponse:
+        """Send money to a PayPal account via the Payouts API v1.
+
+        `sender_batch_id` carries the caller's reference id — PayPal
+        rejects a duplicate batch id, which makes the call idempotent.
+        """
+        payout_data = {
+            "sender_batch_header": {
+                "sender_batch_id": reference_id,
+                "email_subject": "You have a payout",
+            },
+            "items": [
+                {
+                    "recipient_type": "EMAIL",
+                    "receiver": receiver_email,
+                    "amount": {
+                        "value": str(amount),
+                        "currency": currency.upper(),
+                    },
+                    "sender_item_id": reference_id,
+                }
+            ],
+        }
+        try:
+            resp = requests.post(
+                f"{self._base_url}/v1/payments/payouts",
+                json=payout_data,
+                headers=self._headers(reference_id),
+                timeout=self._config.timeout,
+            )
+        except requests.RequestException as exc:
+            return SDKResponse(success=False, error=f"network: {exc}")
+        if resp.status_code in (200, 201):
+            batch_header = resp.json().get("batch_header", {})
+            return SDKResponse(
+                success=True,
+                data={
+                    "payout_batch_id": batch_header.get("payout_batch_id", ""),
+                    "batch_status": batch_header.get("batch_status", ""),
+                },
+            )
+        return SDKResponse(
+            success=False, error=resp.text, error_code=str(resp.status_code)
+        )
+
+    def get_payout_status(self, payout_batch_id: str) -> SDKResponse:
+        """Get the batch status of a previously created payout."""
+        try:
+            resp = requests.get(
+                f"{self._base_url}/v1/payments/payouts/{payout_batch_id}",
+                headers=self._headers(),
+                timeout=self._config.timeout,
+            )
+        except requests.RequestException as exc:
+            return SDKResponse(success=False, error=f"network: {exc}")
+        if resp.status_code == 200:
+            batch_header = resp.json().get("batch_header", {})
+            return SDKResponse(
+                success=True,
+                data={
+                    "payout_batch_id": batch_header.get("payout_batch_id", ""),
+                    "batch_status": batch_header.get("batch_status", ""),
+                },
+            )
+        return SDKResponse(
+            success=False, error=resp.text, error_code=str(resp.status_code)
+        )
+
     def refund_payment(
         self,
         capture_id: str,

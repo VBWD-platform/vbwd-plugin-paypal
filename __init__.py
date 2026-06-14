@@ -1,5 +1,5 @@
 """PayPal payment provider plugin."""
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from decimal import Decimal
 from uuid import UUID
 from vbwd.plugins.base import PluginMetadata
@@ -7,14 +7,42 @@ from vbwd.plugins.payment_provider import (
     PaymentProviderPlugin,
     PaymentResult,
     PaymentStatus,
+    PayoutError,
+    PayoutProvider,
+    PayoutResult,
 )
 
 if TYPE_CHECKING:
     from flask import Blueprint
 
 
-class PayPalPlugin(PaymentProviderPlugin):
-    """PayPal payment provider — Orders API with webhooks.
+PAYOUT_DESTINATION_SCHEMA: List[Dict[str, Any]] = [
+    {
+        "name": "email",
+        "type": "email",
+        "label_key": "withdraw.destination.paypal_email",
+    }
+]
+
+# Payouts-batch statuses → provider-neutral payout status (S79 D1).
+# Unknown / in-flight statuses stay "processing" (non-terminal is the
+# safe default — the withdraw plugin refreshes via get_payout_status).
+_PAYOUT_STATUS_COMPLETED = {"SUCCESS"}
+_PAYOUT_STATUS_FAILED = {"DENIED", "CANCELED", "FAILED", "RETURNED"}
+
+
+def _map_payout_batch_status(batch_status: str) -> str:
+    normalized = batch_status.upper()
+    if normalized in _PAYOUT_STATUS_COMPLETED:
+        return "completed"
+    if normalized in _PAYOUT_STATUS_FAILED:
+        return "failed"
+    return "processing"
+
+
+class PayPalPlugin(PaymentProviderPlugin, PayoutProvider):
+    """PayPal payment provider — Orders API with webhooks; payout via
+    the Payouts API v1 (S79 `PayoutProvider` capability).
 
     Class MUST be defined in __init__.py (not re-exported) due to
     discovery check obj.__module__ != full_module in manager.py.
@@ -191,6 +219,40 @@ class PayPalPlugin(PaymentProviderPlugin):
 
         # If order lookup fails, assume it's already a capture_id
         return order_or_capture_id
+
+    def get_payout_destination_schema(self) -> List[Dict[str, Any]]:
+        return PAYOUT_DESTINATION_SCHEMA
+
+    def create_payout(
+        self,
+        amount: Decimal,
+        currency: str,
+        destination: Dict[str, Any],
+        reference_id: str,
+    ) -> PayoutResult:
+        receiver_email = str(destination.get("email", "")).strip()
+        if not receiver_email:
+            raise PayoutError("PayPal payout requires a destination email")
+        adapter = self._get_adapter()
+        resp = adapter.create_payout_batch(
+            amount=amount,
+            currency=currency,
+            receiver_email=receiver_email,
+            reference_id=reference_id,
+        )
+        if not resp.success:
+            raise PayoutError(f"PayPal payout failed: {resp.error}")
+        return PayoutResult(
+            provider_payout_id=resp.data.get("payout_batch_id", ""),
+            status=_map_payout_batch_status(resp.data.get("batch_status", "")),
+        )
+
+    def get_payout_status(self, provider_payout_id: str) -> str:
+        adapter = self._get_adapter()
+        resp = adapter.get_payout_status(provider_payout_id)
+        if not resp.success:
+            raise PayoutError(f"PayPal payout status lookup failed: {resp.error}")
+        return _map_payout_batch_status(resp.data.get("batch_status", ""))
 
     def verify_webhook(self, payload: bytes, signature: str) -> bool:
         adapter = self._get_adapter()
