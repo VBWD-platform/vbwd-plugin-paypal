@@ -52,7 +52,7 @@ class PayPalPlugin(PaymentProviderPlugin, PayoutProvider):
     def metadata(self) -> PluginMetadata:
         return PluginMetadata(
             name="paypal",
-            version="1.0.0",
+            version="26.6",
             author="VBWD Team",
             description="PayPal payment provider — Orders API with webhooks",
             # S50.4 — recurring billing is event-driven: webhooks publish
