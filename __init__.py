@@ -2,7 +2,7 @@
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from decimal import Decimal
 from uuid import UUID
-from vbwd.plugins.base import PluginMetadata
+from vbwd.plugins.base import PluginMetadata, PublicRouteDeclaration
 from vbwd.plugins.payment_provider import (
     PaymentProviderPlugin,
     PaymentResult,
@@ -60,6 +60,14 @@ class PayPalPlugin(PaymentProviderPlugin, PayoutProvider):
             # disabled) ⇒ the published fact is a no-op, so paypal stays
             # subscription-free and declares no subscription dependency.
             dependencies=[],
+        )
+
+    def declare_public_routes(self) -> PublicRouteDeclaration:
+        """Public PayPal provider webhook (verified by PayPal signature)."""
+        return PublicRouteDeclaration(
+            mutation={
+                "/api/v1/plugins/paypal/webhook": "PayPal provider webhook; verified by PayPal signature in handler.",
+            },
         )
 
     def get_blueprint(self) -> Optional["Blueprint"]:
