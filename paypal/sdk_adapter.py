@@ -256,28 +256,55 @@ class PayPalSDKAdapter(BaseSDKAdapter):
         currency: str,
         interval: str,
         interval_count: int = 1,
+        trial_days: int = 0,
     ) -> SDKResponse:
-        """Create a PayPal Billing Plan for recurring subscriptions."""
-        plan_data = {
-            "product_id": product_id,
-            "name": name,
-            "billing_cycles": [
+        """Create a PayPal Billing Plan for recurring subscriptions.
+
+        When ``trial_days`` is positive, a free TRIAL cycle is prepended so the
+        first REGULAR charge is deferred by that many days.
+        """
+        billing_cycles = []
+        regular_sequence = 1
+        if trial_days > 0:
+            billing_cycles.append(
                 {
                     "frequency": {
-                        "interval_unit": interval.upper(),
-                        "interval_count": interval_count,
+                        "interval_unit": "DAY",
+                        "interval_count": trial_days,
                     },
-                    "tenure_type": "REGULAR",
+                    "tenure_type": "TRIAL",
                     "sequence": 1,
-                    "total_cycles": 0,
+                    "total_cycles": 1,
                     "pricing_scheme": {
                         "fixed_price": {
-                            "value": amount,
+                            "value": "0",
                             "currency_code": currency.upper(),
                         }
                     },
                 }
-            ],
+            )
+            regular_sequence = 2
+        billing_cycles.append(
+            {
+                "frequency": {
+                    "interval_unit": interval.upper(),
+                    "interval_count": interval_count,
+                },
+                "tenure_type": "REGULAR",
+                "sequence": regular_sequence,
+                "total_cycles": 0,
+                "pricing_scheme": {
+                    "fixed_price": {
+                        "value": amount,
+                        "currency_code": currency.upper(),
+                    }
+                },
+            }
+        )
+        plan_data = {
+            "product_id": product_id,
+            "name": name,
+            "billing_cycles": billing_cycles,
             "payment_preferences": {
                 "auto_bill_outstanding": True,
                 "payment_failure_threshold": 3,

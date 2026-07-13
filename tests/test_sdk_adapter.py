@@ -186,6 +186,72 @@ class TestPayPalSDKAdapter:
         assert result.success is True
         assert result.data["subscription_id"] == "I-SUB-123"
 
+    def test_create_billing_plan_no_trial_single_regular_cycle(
+        self, adapter, mock_paypal_api
+    ):
+        """Without a trial, only one REGULAR cycle at sequence 1 is sent."""
+        plan_resp = MagicMock()
+        plan_resp.status_code = 201
+        plan_resp.json.return_value = {"id": "P-PLAN-1"}
+        token_resp = MagicMock()
+        token_resp.status_code = 200
+        token_resp.json.return_value = {"access_token": "tok", "expires_in": 3600}
+        mock_paypal_api.post.side_effect = [token_resp, plan_resp]
+
+        adapter.create_billing_plan(
+            product_id="PROD-1",
+            name="Plan",
+            amount="9.99",
+            currency="eur",
+            interval="MONTH",
+        )
+
+        posted = mock_paypal_api.post.call_args.kwargs["json"]
+        cycles = posted["billing_cycles"]
+        assert len(cycles) == 1
+        assert cycles[0]["tenure_type"] == "REGULAR"
+        assert cycles[0]["sequence"] == 1
+
+    def test_create_billing_plan_with_trial_prepends_trial_cycle(
+        self, adapter, mock_paypal_api
+    ):
+        """A trial prepends a free TRIAL cycle (seq 1) and shifts REGULAR to seq 2."""
+        plan_resp = MagicMock()
+        plan_resp.status_code = 201
+        plan_resp.json.return_value = {"id": "P-PLAN-2"}
+        token_resp = MagicMock()
+        token_resp.status_code = 200
+        token_resp.json.return_value = {"access_token": "tok", "expires_in": 3600}
+        mock_paypal_api.post.side_effect = [token_resp, plan_resp]
+
+        adapter.create_billing_plan(
+            product_id="PROD-2",
+            name="Trial Plan",
+            amount="9.99",
+            currency="eur",
+            interval="MONTH",
+            trial_days=14,
+        )
+
+        posted = mock_paypal_api.post.call_args.kwargs["json"]
+        cycles = posted["billing_cycles"]
+        assert len(cycles) == 2
+        trial_cycle = cycles[0]
+        assert trial_cycle["tenure_type"] == "TRIAL"
+        assert trial_cycle["sequence"] == 1
+        assert trial_cycle["total_cycles"] == 1
+        assert trial_cycle["frequency"] == {
+            "interval_unit": "DAY",
+            "interval_count": 14,
+        }
+        assert trial_cycle["pricing_scheme"]["fixed_price"] == {
+            "value": "0",
+            "currency_code": "EUR",
+        }
+        regular_cycle = cycles[1]
+        assert regular_cycle["tenure_type"] == "REGULAR"
+        assert regular_cycle["sequence"] == 2
+
     def test_get_payment_status(self, adapter, mock_paypal_api):
         """get_payment_status should return status, amount_total, currency."""
         status_resp = MagicMock()

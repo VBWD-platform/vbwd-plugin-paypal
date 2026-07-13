@@ -440,6 +440,7 @@ def _get_or_create_paypal_plan(adapter, invoice, config):
             currency=currency,
             interval=interval["interval_unit"],
             interval_count=interval["interval_count"],
+            trial_days=int(spec.trial_days or 0),
         )
 
     from vbwd.sdk.interface import SDKResponse
